@@ -5,7 +5,7 @@ from flask import Flask, request
 
 
 class Auth:
-    ''' A Class to manage the API authentication.
+    ''' A Class that will manage the API authentication.
     '''
 
     def require_auth(
