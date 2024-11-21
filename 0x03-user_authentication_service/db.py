@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Database manager module.
+"""The DB module.
 """
 from sqlalchemy import create_engine, tuple_
 from sqlalchemy.exc import InvalidRequestError
@@ -12,94 +12,69 @@ from user import Base, User
 
 
 class DB:
-    """DB class.
+    """The DB class.
     """
 
     def __init__(self) -> None:
-        """Initialize a new DB instance.
+        """Initializing a new DB instance.
         """
-        self._engine = create_engine("sqlite:///a.db", echo=True)
+        self._engine = create_engine("sqlite:///a.db", echo=False)
         Base.metadata.drop_all(self._engine)
         Base.metadata.create_all(self._engine)
         self.__session = None
 
     @property
     def _session(self) -> Session:
-        """Memoized session object.
+        """Memoizing a  session object.
         """
         if self.__session is None:
             DBSession = sessionmaker(bind=self._engine)
             self.__session = DBSession()
         return self.__session
 
-
-class DatabaseHandler:
-    """Handles database operations and user management.
-    """
-
-    def __init__(self) -> None:
-        """Initialize the database connection and ensure the schema is set up.
-        """
-        self._db_engine = create_engine("sqlite:///users.db", echo=False)
-        Base.metadata.drop_all(self._db_engine)
-        Base.metadata.create_all(self._db_engine)
-        self._session_instance = None
-
-    @property
-    def session(self) -> Session:
-        """Retrieve or create a database session.
-        """
-        if self._session_instance is None:
-            session_factory = sessionmaker(bind=self._db_engine)
-            self._session_instance = session_factory()
-        return self._session_instance
-
-    def add_new_user(self, email: str, password_hash: str) -> User:
-        """Add a new user to the database using email and hashed password.
+    def add_user(self, email: str, hashed_password: str) -> User:
+        """Adding a new user to the database.
         """
         try:
-            new_user = User(email=email, hashed_password=password_hash)
-            self.session.add(new_user)
-            self.session.commit()
+            new_user = User(email=email, hashed_password=hashed_password)
+            self._session.add(new_user)
+            self._session.commit()
         except Exception:
-            self.session.rollback()
+            self._session.rollback()
             new_user = None
         return new_user
 
-    def find_user_by(self, **filters) -> User:
-        """Find a user by various attributes provided as filters.
+    def find_user_by(self, **kwargs) -> User:
+        """Finding a user based on a set of filters.
         """
-        filter_columns, filter_values = [], []
-        for attribute, value in filters.items():
-            if hasattr(User, attribute):
-                filter_columns.append(getattr(User, attribute))
-                filter_values.append(value)
+        fields, values = [], []
+        for key, value in kwargs.items():
+            if hasattr(User, key):
+                fields.append(getattr(User, key))
+                values.append(value)
             else:
-                raise InvalidRequestError("Invalid field name provided.")
-
-        query_result = self.session.query(User).filter(
-            tuple_(*filter_columns).in_([tuple(filter_values)])
+                raise InvalidRequestError()
+        result = self._session.query(User).filter(
+            tuple_(*fields).in_([tuple(values)])
         ).first()
+        if result is None:
+            raise NoResultFound()
+        return result
 
-        if query_result is None:
-            raise NoResultFound("No user found!")
-        return query_result
-
-    def update_user(self, user_id: int, **updates) -> None:
-        """Update user information by their user ID.
+    def update_user(self, user_id: int, **kwargs) -> None:
+        """Updating a user based on a given id.
         """
         user = self.find_user_by(id=user_id)
         if user is None:
             return
-        update_data = {}
-        for attribute, value in updates.items():
-            if hasattr(User, attribute):
-                update_data[getattr(User, attribute)] = value
+        update_source = {}
+        for key, value in kwargs.items():
+            if hasattr(User, key):
+                update_source[getattr(User, key)] = value
             else:
-                raise ValueError(f"Invalid update field: {attribute}")
-
-        self.session.query(User).filter(User.id == user_id).update(
-            update_data,
+                raise ValueError()
+        self._session.query(User).filter(User.id == user_id).update(
+            update_source,
             synchronize_session=False,
         )
-        self.session.commit()
+        self._session.commit()
